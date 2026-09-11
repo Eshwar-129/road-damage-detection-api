@@ -43,6 +43,25 @@ if not GROQ_API_KEY:
 
 # Configuration
 MODEL_PATH = "best_finetuned.pt"
+BUCKET_NAME = "road-damage-models-bucket"
+BLOB_NAME = "best_finetuned.pt"
+
+def download_model_from_gcs():
+    """Downloads model weights dynamically from GCS if not present locally."""
+    if not os.path.exists(MODEL_PATH):
+        logger.info(f"Downloading model weights from GCS bucket '{BUCKET_NAME}'...")
+        try:
+            storage_client = storage.Client()
+            bucket = storage_client.bucket(BUCKET_NAME)
+            blob = bucket.blob(BLOB_NAME)
+            blob.download_to_filename(MODEL_PATH)
+            logger.info("Model weights downloaded successfully from GCS.")
+        except Exception as e:
+            logger.error(f"Failed to download model from GCS: {e}")
+            raise RuntimeError(f"Could not download model: {e}")
+
+# Trigger download before loading into RT-DETR
+download_model_from_gcs()
 
 # Declare model globally upfront
 model = None
