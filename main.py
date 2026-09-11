@@ -111,7 +111,8 @@ async def detect_damage(file: UploadFile = File(...)):
     image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     
     # Run Inference
-    results = model.predict(source=image, conf=0.25, imgsz=640, device='cpu')
+    # Change imgsz to 416 to lower memory usage on Render's 512MB free tier
+    results = model.predict(source=image, conf=0.25, imgsz=416, device="cpu")
     detections = extract_detections(results[0])
     
     # Cleanup memory to protect low-RAM free tiers
@@ -168,7 +169,7 @@ async def natural_language_reasoning(file: UploadFile = File(...), question: str
     image_bytes = await file.read()
     image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     
-    results = model.predict(source=image, conf=0.25, imgsz=640, device='cpu')
+    results = model.predict(source=image, conf=0.25, imgsz=416, device='cpu')
     detections = extract_detections(results[0])
     
     del results
