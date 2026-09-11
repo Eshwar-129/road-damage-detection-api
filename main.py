@@ -2,15 +2,17 @@ import io
 import time
 import logging
 import requests
+import json
 from pathlib import Path
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from PIL import Image
 from ultralytics import RTDETR
 import os
 from dotenv import load_dotenv
+from google.cloud import storage
 
 # ==========================================
-# 1. LOGGING CONFIGURATION (Bonus Points)
+# 1. LOGGING CONFIGURATION
 # ==========================================
 LOG_FILE = Path("app_audit.log")
 logging.basicConfig(
@@ -24,33 +26,64 @@ logging.basicConfig(
 logger = logging.getLogger("civic_api")
 
 # ==========================================
-# 2. APP & MODEL INITIALIZATION
+# 2. CREDENTIALS & APP INITIALIZATION
+# ==========================================
+# Load environment variables from the .env file if present
+load_dotenv()
+
+# If running on Railway/Cloud, write the JSON env var to a temp credentials file
+gcp_json_key = os.environ.get("GCP_SA_JSON")
+if gcp_json_key:
+    cred_path = "/tmp/gcp_credentials.json"
+    with open(cred_path, "w") as f:
+        f.write(gcp_json_key)
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = cred_path
+    logger.info("Configured Google Application Credentials from GCP_SA_JSON environment variable.")
+
+# Fetch the Groq API key securely
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+
+if not GROQ_API_KEY:
+    logger.error("GROQ_API_KEY is missing! Check your environment variables.")
+
+# ==========================================
+# 3. GCS MODEL DOWNLOAD & LOADING
 # ==========================================
 app = FastAPI(
     title="Civic Infrastructure AI API",
     description="Vision and Reasoning API for Road Damage Detection"
 )
 
-# Load environment variables from the .env file
-load_dotenv()
-
-# Fetch the key securely
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
-
-if not GROQ_API_KEY:
-    logger.error("GROQ_API_KEY is missing! Check your .env file.")
-
-# Configuration
+BUCKET_NAME = "road-damage-models-bucket"
+BLOB_NAME = "best_finetuned.pt"
 MODEL_PATH = "best_finetuned.pt"
+
+def download_model_from_gcs():
+    """Downloads model weights from GCS if not present or if it's a corrupted Git LFS pointer."""
+    if not os.path.exists(MODEL_PATH) or os.path.getsize(MODEL_PATH) < 1000000:
+        logger.info(f"Downloading model weights from GCS bucket '{BUCKET_NAME}'...")
+        try:
+            storage_client = storage.Client()
+            bucket = storage_client.bucket(BUCKET_NAME)
+            blob = bucket.blob(BLOB_NAME)
+            blob.download_to_filename(MODEL_PATH)
+            logger.info("Model weights downloaded successfully from GCS.")
+        except Exception as e:
+            logger.error(f"CRITICAL: Failed to download model from GCS: {e}")
+            raise RuntimeError(f"GCS Download Error: {e}")
+
+# Download model prior to loading into RT-DETR
+download_model_from_gcs()
 
 try:
     model = RTDETR(MODEL_PATH)
     logger.info("RT-DETR model loaded successfully.")
 except Exception as e:
     logger.error(f"Failed to load model: {e}")
+    raise RuntimeError(f"Could not load model weights: {e}")
 
 # ==========================================
-# 3. HELPER FUNCTIONS (No Frameworks)
+# 4. HELPER FUNCTIONS
 # ==========================================
 def call_groq(prompt: str, max_tokens: int = 250) -> str:
     """Helper to communicate with Groq API natively using standard requests."""
@@ -87,7 +120,7 @@ def extract_detections(result) -> list:
     return detections
 
 # ==========================================
-# 4. ENDPOINT 1: VISION ONLY (/detect)
+# 5. ENDPOINT 1: VISION ONLY (/detect)
 # ==========================================
 @app.post("/detect")
 async def detect_damage(file: UploadFile = File(...)):
@@ -115,7 +148,7 @@ async def detect_damage(file: UploadFile = File(...)):
     }
 
 # ==========================================
-# 5. ENDPOINT 2: REASONING LAYER (/reason)
+# 6. ENDPOINT 2: REASONING LAYER (/reason)
 # ==========================================
 @app.post("/reason")
 async def natural_language_reasoning(file: UploadFile = File(...), question: str = Form(...)):
@@ -192,4 +225,4 @@ async def natural_language_reasoning(file: UploadFile = File(...), question: str
     return {
         "status": "success",
         "response": final_answer,
-    }   
+    }
