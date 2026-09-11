@@ -2,7 +2,6 @@ import io
 import time
 import logging
 import requests
-import gc
 from pathlib import Path
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from PIL import Image
@@ -43,34 +42,12 @@ if not GROQ_API_KEY:
 
 # Configuration
 MODEL_PATH = "best_finetuned.pt"
-BUCKET_NAME = "road-damage-models-bucket"
-BLOB_NAME = "best_finetuned.pt"
-
-def download_model_from_gcs():
-    if not os.path.exists(MODEL_PATH):
-        logger.info(f"Attempting to download model from GCS bucket: {BUCKET_NAME}")
-        try:
-            storage_client = storage.Client()
-            bucket = storage_client.bucket(BUCKET_NAME)
-            blob = bucket.blob(BLOB_NAME)
-            blob.download_to_filename(MODEL_PATH)
-            logger.info("Model downloaded successfully from GCS.")
-        except Exception as e:
-            logger.error(f"CRITICAL GCS DOWNLOAD FAILED: {str(e)}")
-            raise RuntimeError(f"GCS Download Error: {e}")
-
-# Trigger download before loading into RT-DETR
-download_model_from_gcs()
-
-# Declare model globally upfront
-model = None
 
 try:
     model = RTDETR(MODEL_PATH)
     logger.info("RT-DETR model loaded successfully.")
 except Exception as e:
     logger.error(f"Failed to load model: {e}")
-    raise RuntimeError(f"Could not load model weights: {e}")
 
 # ==========================================
 # 3. HELPER FUNCTIONS (No Frameworks)
@@ -109,14 +86,6 @@ def extract_detections(result) -> list:
         })
     return detections
 
-# Root health check endpoint for deployment stability
-@app.get("/")
-async def root():
-    return {
-        "status": "online",
-        "message": "Civic Infrastructure AI API is running successfully."
-    }
-
 # ==========================================
 # 4. ENDPOINT 1: VISION ONLY (/detect)
 # ==========================================
@@ -133,13 +102,8 @@ async def detect_damage(file: UploadFile = File(...)):
     image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     
     # Run Inference
-    # Change imgsz to 416 to lower memory usage on Render's 512MB free tier
-    results = model.predict(source=image, conf=0.25, imgsz=640, device="cpu")
+    results = model.predict(source=image, conf=0.25, imgsz=640, device='cpu')
     detections = extract_detections(results[0])
-    
-    # Cleanup memory to protect low-RAM free tiers
-    del results
-    gc.collect()
     
     latency = (time.time() - start_time) * 1000
     logger.info(f"Detection complete in {latency:.2f}ms | Found {len(detections)} items.")
@@ -159,13 +123,6 @@ async def natural_language_reasoning(file: UploadFile = File(...), question: str
     logger.info(f"POST /reason hit | File: '{file.filename}' | Question: '{question}'")
 
     # ----------------------------------------
-    # STAGE 0: VALIDATION (Check file type first)
-    # ----------------------------------------
-    if not file.content_type.startswith("image/"):
-        logger.warning("Invalid file type uploaded to /reason.")
-        raise HTTPException(status_code=400, detail="Must be an image.")
-
-    # ----------------------------------------
     # STAGE 1: INTENT ROUTING
     # ----------------------------------------
     intent_prompt = f"""
@@ -173,7 +130,6 @@ async def natural_language_reasoning(file: UploadFile = File(...), question: str
     Does this question require analyzing an image of road damage, potholes, cracks, or civic infrastructure?
     Reply strictly with exactly "YES" or "NO". Do not output any other text.
     """
-    
     intent = call_groq(intent_prompt, max_tokens=10)
     
     if "NO" in intent.upper():
@@ -188,14 +144,14 @@ async def natural_language_reasoning(file: UploadFile = File(...), question: str
     # ----------------------------------------
     # STAGE 2: STRUCTURED VISION INFERENCE
     # ----------------------------------------
+    if not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Must be an image.")
+
     image_bytes = await file.read()
     image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     
     results = model.predict(source=image, conf=0.25, imgsz=640, device='cpu')
     detections = extract_detections(results[0])
-    
-    del results
-    gc.collect()
     logger.info(f"RT-DETR Inference finished | Found {len(detections)} object(s).")
 
     # ----------------------------------------
@@ -212,7 +168,6 @@ async def natural_language_reasoning(file: UploadFile = File(...), question: str
     # ----------------------------------------
     # STAGE 4: STRUCTURED REASONING
     # ----------------------------------------
-    
     reasoning_prompt = f"""
     You are a civic infrastructure AI assistant. 
     Here is the exact road damage data detected by our vision model in the uploaded image:
@@ -237,4 +192,4 @@ async def natural_language_reasoning(file: UploadFile = File(...), question: str
     return {
         "status": "success",
         "response": final_answer,
-    }
+    }   
