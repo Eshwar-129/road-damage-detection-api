@@ -2,6 +2,7 @@ import io
 import time
 import logging
 import requests
+import gc
 from pathlib import Path
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from PIL import Image
@@ -18,7 +19,7 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] [%(name)s] %(message)s",
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler(LOG_FILE)
+        logging.FileHandler(LOG_FILE, encoding="utf-8")
     ]
 )
 logger = logging.getLogger("civic_api")
@@ -31,8 +32,6 @@ app = FastAPI(
     description="Vision and Reasoning API for Road Damage Detection"
 )
 
-
-
 # Load environment variables from the .env file
 load_dotenv()
 
@@ -44,7 +43,6 @@ if not GROQ_API_KEY:
 
 # Configuration
 MODEL_PATH = "best_finetuned.pt"
- # Replace with your actual key
 
 try:
     model = RTDETR(MODEL_PATH)
@@ -62,15 +60,13 @@ def call_groq(prompt: str, max_tokens: int = 250) -> str:
         "Content-Type": "application/json"
     }
     
-    # Groq uses the exact same payload structure as OpenAI
     payload = {
-        "model": "openai/gpt-oss-20b", # The currently supported 2026 developer model
+        "model": "openai/gpt-oss-20b", 
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.1, 
         "max_tokens": max_tokens
     }
     
-    # The endpoint is updated to Groq's OpenAI-compatible URL
     response = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=payload)
     
     if response.status_code == 200:
@@ -91,6 +87,14 @@ def extract_detections(result) -> list:
         })
     return detections
 
+# Root health check endpoint for deployment stability
+@app.get("/")
+async def root():
+    return {
+        "status": "online",
+        "message": "Civic Infrastructure AI API is running successfully."
+    }
+
 # ==========================================
 # 4. ENDPOINT 1: VISION ONLY (/detect)
 # ==========================================
@@ -110,6 +114,10 @@ async def detect_damage(file: UploadFile = File(...)):
     results = model.predict(source=image, conf=0.25, imgsz=640, device='cpu')
     detections = extract_detections(results[0])
     
+    # Cleanup memory to protect low-RAM free tiers
+    del results
+    gc.collect()
+    
     latency = (time.time() - start_time) * 1000
     logger.info(f"Detection complete in {latency:.2f}ms | Found {len(detections)} items.")
     
@@ -128,14 +136,21 @@ async def natural_language_reasoning(file: UploadFile = File(...), question: str
     logger.info(f"POST /reason hit | File: '{file.filename}' | Question: '{question}'")
 
     # ----------------------------------------
+    # STAGE 0: VALIDATION (Check file type first)
+    # ----------------------------------------
+    if not file.content_type.startswith("image/"):
+        logger.warning("Invalid file type uploaded to /reason.")
+        raise HTTPException(status_code=400, detail="Must be an image.")
+
+    # ----------------------------------------
     # STAGE 1: INTENT ROUTING
     # ----------------------------------------
-    # Use OpenRouter for a zero-shot intent check before running the heavy vision model
     intent_prompt = f"""
-    You are an intent routing classifier. A user asked this question: "{question}"
+    You are an intent routing classifier. A user asked this question: {question}
     Does this question require analyzing an image of road damage, potholes, cracks, or civic infrastructure?
     Reply strictly with exactly "YES" or "NO". Do not output any other text.
     """
+    
     intent = call_groq(intent_prompt, max_tokens=10)
     
     if "NO" in intent.upper():
@@ -150,14 +165,14 @@ async def natural_language_reasoning(file: UploadFile = File(...), question: str
     # ----------------------------------------
     # STAGE 2: STRUCTURED VISION INFERENCE
     # ----------------------------------------
-    if not file.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="Must be an image.")
-
     image_bytes = await file.read()
     image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     
     results = model.predict(source=image, conf=0.25, imgsz=640, device='cpu')
     detections = extract_detections(results[0])
+    
+    del results
+    gc.collect()
     logger.info(f"RT-DETR Inference finished | Found {len(detections)} object(s).")
 
     # ----------------------------------------
@@ -174,6 +189,7 @@ async def natural_language_reasoning(file: UploadFile = File(...), question: str
     # ----------------------------------------
     # STAGE 4: STRUCTURED REASONING
     # ----------------------------------------
+    
     reasoning_prompt = f"""
     You are a civic infrastructure AI assistant. 
     Here is the exact road damage data detected by our vision model in the uploaded image:
@@ -183,8 +199,8 @@ async def natural_language_reasoning(file: UploadFile = File(...), question: str
     Do not invent new damages or assume information not in the JSON. 
     
     CRITICAL RULES:
-    1. If the detection list is empty ([]), state professionally that no road damage or issues were detected by the system. (Note: Do not assume the image is blurry; simply report that no structural defects or features were isolated by the vision model).
-    2. If the user asks about an object or animal completely unrelated to road infrastructure (like cats, people, or vehicles) and it is not in the data, state clearly that it is not present in the image.
+    1. If the detection list is empty ([]), state professionally that no road damage or issues were detected by the system.
+    2. If the user asks about an object or animal completely unrelated to road infrastructure, state clearly that it is not present in the image.
     3. Never return a blank response.
     
     User Question: {question}
