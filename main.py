@@ -44,11 +44,15 @@ if not GROQ_API_KEY:
 # Configuration
 MODEL_PATH = "best_finetuned.pt"
 
+# Declare model globally upfront
+model = None
+
 try:
     model = RTDETR(MODEL_PATH)
     logger.info("RT-DETR model loaded successfully.")
 except Exception as e:
     logger.error(f"Failed to load model: {e}")
+    raise RuntimeError(f"Could not load model weights: {e}")
 
 # ==========================================
 # 3. HELPER FUNCTIONS (No Frameworks)
