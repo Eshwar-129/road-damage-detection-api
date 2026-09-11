@@ -47,18 +47,17 @@ BUCKET_NAME = "road-damage-models-bucket"
 BLOB_NAME = "best_finetuned.pt"
 
 def download_model_from_gcs():
-    """Downloads model weights dynamically from GCS if not present locally."""
     if not os.path.exists(MODEL_PATH):
-        logger.info(f"Downloading model weights from GCS bucket '{BUCKET_NAME}'...")
+        logger.info(f"Attempting to download model from GCS bucket: {BUCKET_NAME}")
         try:
             storage_client = storage.Client()
             bucket = storage_client.bucket(BUCKET_NAME)
             blob = bucket.blob(BLOB_NAME)
             blob.download_to_filename(MODEL_PATH)
-            logger.info("Model weights downloaded successfully from GCS.")
+            logger.info("Model downloaded successfully from GCS.")
         except Exception as e:
-            logger.error(f"Failed to download model from GCS: {e}")
-            raise RuntimeError(f"Could not download model: {e}")
+            logger.error(f"CRITICAL GCS DOWNLOAD FAILED: {str(e)}")
+            raise RuntimeError(f"GCS Download Error: {e}")
 
 # Trigger download before loading into RT-DETR
 download_model_from_gcs()
