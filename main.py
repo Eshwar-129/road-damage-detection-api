@@ -43,7 +43,7 @@ if not GROQ_API_KEY:
     logger.error("GROQ_API_KEY is missing! Check your .env file.")
 
 # Configuration
-MODEL_PATH = "best1.pt"
+MODEL_PATH = "best_finetuned.pt"
  # Replace with your actual key
 
 try:
