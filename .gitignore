@@ -1,4 +1,3 @@
 .env
-*.pt
 __pycache__/
 .venv/
