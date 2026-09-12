@@ -208,7 +208,7 @@ results = model.train(
 
 **Live Railway Deployment**
 
-`https://road-damage-detection-api-production.up.railway.app`
+[https://road-damage-detection-api-production.up.railway.app](https://road-damage-detection-api-production.up.railway.app)
 
 ### Endpoint 1: Vision Only
 
