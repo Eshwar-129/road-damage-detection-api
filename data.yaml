@@ -1,0 +1,16 @@
+# Path to the dataset root folder
+path: ./dataset
+
+# Subdirectories for splits
+train: images/train
+val: images/val
+test: images/test
+
+# Number of classes
+nc: 3
+
+# Class names corresponding to IDs 0, 1, 2
+names:
+  0: Pothole
+  1: Crack
+  2: Manhole
