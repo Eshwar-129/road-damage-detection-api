@@ -68,8 +68,8 @@ At container startup on Railway, the application automatically:
 Trained on specialized road damage classes:
 
 - Potholes
-- Structural cracks
-- Surface wear
+- Cracks
+- Manholes
 
 Rather than standard COCO objects, ensuring domain-specific utility.
 
