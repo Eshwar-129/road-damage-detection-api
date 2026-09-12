@@ -105,6 +105,10 @@ This forces safe fallbacks:
 
 rather than hallucinating answers from weak visual detections.
 
+### Dataset Provenance & Structuring
+* **Source Dataset**: Curated from the public Kaggle [Road Damage Dataset (Potholes, Cracks, and Manholes)](https://www.kaggle.com/datasets/lorenzoarcioni/road-damage-dataset-potholes-cracks-and-manholes).
+* **Directory Layout & Splitting**: Handled locally via `split_dataset.py`, organizing raw files into structured `images/` and `labels/` directories mapped through `data.yaml`.
+
 ### Audit Logging & Error Resilience
 
 Comprehensive stream and file logging using:
