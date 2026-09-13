@@ -139,20 +139,47 @@ road-damage-detection-api/
 │   └── evaluate.ipynb
 │       # Evaluation script computing mAP, precision/recall metrics
 │
-├── main.py
-│   # FastAPI application (Endpoints, GCS loader, Groq integration)
+├── .gitattributes
+│   # Configure Git LFS tracking for .pt files
+│
+├── .gitignore
+│   # Exclude local environment files and checkpoints
 │
 ├── Dockerfile
 │   # Container definition optimized for Cloud Run / Railway
 │
-├── requirements.txt
-│   # Pinned Python dependencies
+├── MEMO.pdf
+│   # 2-page engineering memorandum for the assessment
+│
+├── README.md
+│   # Complete system documentation
+│
+├── api_instructions.pdf
+│   # API usage instructions, cURL commands, and sample payloads
 │
 ├── app_audit.log
 │   # Runtime audit and latency logger
 │
-└── README.md
-    # Complete system documentation
+├── best_finetuned.pt
+│   # Fine-tuned model tracked via Git LFS
+│
+├── data.yaml
+│   # Dataset configuration mapping classes (potholes, cracks, wear, manholes)
+│
+├── main.py
+│   # FastAPI application (Endpoints, GCS loader, Groq integration)
+│
+├── requirements.txt
+│   # Pinned Python dependencies
+│
+├── results.csv
+│   # Raw training and validation metrics per epoch
+│
+├── results.png
+│   # Training progression and loss curves visualization
+│
+└── split_dataset.py
+    # Script for partitioning raw data into train/val/test splits
 ```
 
 ---
