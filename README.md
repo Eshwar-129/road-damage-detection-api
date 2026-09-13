@@ -241,6 +241,8 @@ results = model.train(
 
 [https://road-damage-detection-api-production.up.railway.app](https://road-damage-detection-api-production.up.railway.app)
 
+> *Note: Append `/docs` to the URL (e.g., [`https://road-damage-detection-api-production.up.railway.app/docs`](https://road-damage-detection-api-production.up.railway.app/docs)) to access the interactive **Swagger UI** for live endpoint testing.*
+
 ### Endpoint 1: Vision Only
 
 `POST /detect`
